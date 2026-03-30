@@ -1,0 +1,10 @@
+# pip install -r requirements.txt
+
+requests>=2.31.0
+pandas>=2.0.0
+numpy>=1.24.0
+pandas-ta>=0.3.14b
+feedparser>=6.0.10
+vaderSentiment>=3.3.2
+python-dateutil>=2.8.2
+pytz>=2023.3
