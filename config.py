@@ -33,7 +33,7 @@ SYMBOL = "XAU/USD"
 CAPITAL = 10000
 RISK_PCT = 0.02
 
-DEMO_MODE = True  # Mettez False pour le trading réel
+DEMO_MODE = True  
 
 
 # Session de trading (UTC)
@@ -43,3 +43,4 @@ SESSION_END = 23   # 23h UTC
 # IBKR Connection
 IB_HOST = "127.0.0.1"
 IB_PORT = 4002
+IBKR_PORT = 7497

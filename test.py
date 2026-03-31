@@ -1,70 +1,93 @@
-# test_trade.py - Script de test simplifié
-import sys
-import os
+# test_ibkr_simple.py
 import time
+import sys
+sys.path.insert(0, '.')
 
-sys.path.insert(0, os.path.dirname(__file__))
+print("=" * 50)
+print("Test de connexion API IBKR")
+print("=" * 50)
 
-print("=" * 60)
-print("TEST DE TRADING - XAU/USD")
-print("=" * 60)
-
-# Utiliser l'executor
-from modules.order_executor import OrderExecutor
-
-print("\n1. Connexion à IB Gateway...")
-ex = OrderExecutor()
-time.sleep(2)
-
-print("\n2. Récupération des informations...")
-price = ex.get_price()
-cash = ex.available_cash()
-pos = ex.get_position_info()
-
-print(f"   Prix XAU/USD: ${price:.2f}")
-print(f"   Cash disponible: ${cash:.2f}")
-print(f"   Position actuelle: {pos if pos else 'Aucune'}")
-
-print("\n" + "=" * 60)
-print("ATTENTION: Ceci va passer un ORDRE DE MARCHÉ!")
-print("   Quantité: 0.01 oz (minimum pour test)")
-print("   Type: BUY puis fermeture après 10 secondes")
-print("=" * 60)
-
-response = input("\nVoulez-vous continuer? (oui/non): ")
-
-if response.lower() == "oui":
-    print("\n3. Passage de l'ordre BUY...")
-    atr = price * 0.002
-    success = ex.enter("buy", price, atr)
+try:
+    from ibapi.client import EClient
+    from ibapi.wrapper import EWrapper
+    from ibapi.contract import Contract
+    import threading
     
-    if success:
-        print("   ✅ Ordre BUY envoyé!")
+    class TestApp(EWrapper, EClient):
+        def __init__(self):
+            EClient.__init__(self, self)
+            self.connected = False
+            
+        def error(self, reqId, errorCode, errorString):
+            if errorCode in [2104, 2106, 2158]:
+                print(f"[INFO] {errorString}")
+            elif errorCode == 502:
+                print("[ERREUR] Cannot connect to IB Gateway/TWS")
+            elif errorCode == 504:
+                print("[ERREUR] Not connected")
+            else:
+                print(f"[ERROR] {errorCode}: {errorString}")
+                
+        def connectAck(self):
+            print("[OK] Connection acknowledged")
+            
+        def nextValidId(self, orderId):
+            print(f"[OK] Next valid order ID: {orderId}")
+            self.connected = True
+            
+        def connectionClosed(self):
+            print("[WARNING] Connection closed")
+            self.connected = False
+    
+    print("1. Creation de l'application...")
+    app = TestApp()
+    
+    print("2. Connexion a IB Gateway (port 4002)...")
+    app.connect("127.0.0.1", 4002, clientId=1)
+    
+    print("3. Demarrage du thread...")
+    thread = threading.Thread(target=app.run, daemon=True)
+    thread.start()
+    
+    print("4. Attente de la connexion (15 secondes)...")
+    for i in range(15):
+        time.sleep(1)
+        print(f"   ... {i+1}/15")
+        if app.connected:
+            break
+    
+    if app.connected:
+        print("\n[SUCCES] Connexion etablie avec IB Gateway!")
+        
+        # Tester un contrat
+        print("\n5. Demande de contrat XAUUSD...")
+        contract = Contract()
+        contract.symbol = "XAUUSD"
+        contract.secType = "CFD"
+        contract.exchange = "SMART"
+        contract.currency = "USD"
+        
+        app.reqContractDetails(1, contract)
+        time.sleep(2)
+        
+        print("\n6. Demande de donnees de marche...")
+        app.reqMarketDataType(3)  # Delayed data
+        app.reqMktData(1, contract, "", False, False, [])
         time.sleep(3)
         
-        # Vérifier la position
-        new_pos = ex.get_position_info()
-        print(f"   Nouvelle position: {new_pos}")
-        
-        print("\n4. Attente 10 secondes...")
-        for i in range(10, 0, -1):
-            print(f"   Fermeture dans {i} secondes...", end="\r")
-            time.sleep(1)
-        
-        print("\n5. Fermeture de la position...")
-        ex.close()
-        print("   ✅ Ordre de fermeture envoyé!")
-        
-        # Vérifier après fermeture
-        time.sleep(2)
-        final_pos = ex.get_position_info()
-        print(f"   Position finale: {final_pos if final_pos else 'Aucune'}")
+        print("\n[SUCCES] Test complete!")
         
     else:
-        print("   ❌ Échec de l'ordre")
-else:
-    print("\nTest annulé")
-
-print("\n" + "=" * 60)
-print("Test terminé")
-print("=" * 60)
+        print("\n[ECHEC] Impossible de se connecter")
+        print("\nVerifiez dans IB Gateway:")
+        print("  - Etes-vous connecte (cercle vert en bas)?")
+        print("  - API activee? (File -> Global Configuration -> API)")
+        print("  - Port correct? 4002")
+        print("  - 'Enable ActiveX and Socket Clients' coché?")
+        
+    app.disconnect()
+    
+except Exception as e:
+    print(f"[ERREUR] {e}")
+    import traceback
+    traceback.print_exc()

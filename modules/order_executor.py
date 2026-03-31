@@ -1,12 +1,7 @@
 # modules/order_executor.py
 import time
 from datetime import datetime
-from pathlib import Path
-import json
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from typing import Optional, Dict, List
 
 import config
 from core.logger import get_logger
@@ -16,131 +11,83 @@ log = get_logger()
 
 class OrderExecutor:
     def __init__(self):
-        try:
-            self.ib = IBKRConnector()
-            log.info("OrderExecutor initialise")
-        except Exception as e:
-            log.error(f"Erreur initialisation: {e}")
-            raise
+        self.connector = IBKRConnector()
+        self.trade_history = []
+        log.info("OrderExecutor initialise avec IBKR")
         
     def get_price(self) -> float:
-        try:
-            return self.ib.get_price()
-        except Exception as e:
-            log.error(f"Erreur get_price: {e}")
-            return 2650.0
-        
-    def get_position(self) -> float:
-        try:
-            return self.ib.get_position()
-        except Exception as e:
-            log.error(f"Erreur get_position: {e}")
-            return 0.0
-        
-    def has_position(self) -> bool:
-        return self.get_position() != 0
-        
-    def get_position_info(self):
-        try:
-            return self.ib.get_position_info()
-        except Exception as e:
-            log.error(f"Erreur get_position_info: {e}")
-            return None
-        
+        return self.connector.get_price()
+    
     def available_cash(self) -> float:
-        try:
-            cash = self.ib.available_cash()
-            return cash if cash > 0 else config.CAPITAL
-        except Exception as e:
-            log.error(f"Erreur available_cash: {e}")
-            return config.CAPITAL
-        
-  # modules/order_executor.py - Modification de calc_qty
-
-def calc_qty(self, price: float, atr: float = None) -> float:
-    """Calcule la quantité basée sur le risque - retourne un entier"""
-    cash = min(self.available_cash(), 100000)
-    risk_amount = cash * config.RISK_PCT
+        return self.connector.available_cash()
     
-    if atr is None or atr <= 0:
-        atr = 1.5
+    def has_position(self) -> bool:
+        return self.connector.has_position()
     
-    # Calcul de la quantité
-    qty = max(1, round(risk_amount / atr))  # Arrondir à l'entier le plus proche, minimum 1
+    def get_position_info(self) -> Optional[Dict]:
+        return self.connector.get_position_info()
     
-    # Limiter à la quantité max possible
-    max_qty = int(cash / price) if price > 0 else 1
-    qty = min(qty, max_qty)
-    
-    # S'assurer que c'est un entier
-    qty = int(qty)
-    
-    # Minimum 1 unité
-    if qty < 1:
-        qty = 1
-        
-    return qty
-        
     def enter(self, side: str, price: float, atr: float) -> bool:
-        qty = self.calc_qty(price, atr)
-        
-        if qty <= 0:
-            log.error("Quantite invalide")
-            return False
-            
-        log.info(f"{'BUY' if side=='buy' else 'SELL'} {qty} oz @ ${price:.2f}")
-        
         try:
-            success = self.ib.place_order(side.upper(), qty)
-            if success:
-                log.info("Ordre execute")
-                self._log_trade(side, qty, price)
-                return True
-            else:
-                log.error("Ordre non execute")
+            size = self._calculate_position_size(price, atr)
+            if size <= 0:
+                log.warning(f"Taille invalide: {size}")
                 return False
-        except Exception as e:
-            log.error(f"Erreur ordre: {e}")
+            action = "BUY" if side == "buy" else "SELL"
+            success = self.connector.place_order(action, size)
+            if success:
+                self.record_trade({
+                    'type': side.upper(),
+                    'size': size,
+                    'price': price,
+                    'timestamp': datetime.now(),
+                    'status': 'ENTERED'
+                })
+                log.info(f"Ordre {action} {size} oz place a ${price:.2f}")
+                return True
             return False
-            
+        except Exception as e:
+            log.error(f"Erreur enter: {e}")
+            return False
+    
     def close(self) -> bool:
         try:
-            success = self.ib.close_position()
+            success = self.connector.close_position()
             if success:
+                self.record_trade({
+                    'type': 'CLOSE',
+                    'timestamp': datetime.now(),
+                    'status': 'CLOSED'
+                })
                 log.info("Position fermee")
-            return success
-        except Exception as e:
-            log.error(f"Erreur fermeture: {e}")
+                return True
             return False
-            
-    def get_trade_history(self, count=3):
-        try:
-            trades_file = Path("data/trades.json")
-            if trades_file.exists():
-                trades = json.loads(trades_file.read_text())
-                return trades[-count:] if trades else []
         except Exception as e:
-            log.error(f"Erreur lecture historique: {e}")
-        return []
-        
-    def _log_trade(self, side, qty, price):
-        trades_file = Path("data/trades.json")
-        trades_file.parent.mkdir(exist_ok=True)
+            log.error(f"Erreur close: {e}")
+            return False
+    
+    def _calculate_position_size(self, price: float, atr: float) -> int:
         try:
-            trades = json.loads(trades_file.read_text()) if trades_file.exists() else []
-        except Exception:
-            trades = []
-            
-        trades.append({
-            "ts": datetime.utcnow().isoformat(),
-            "symbol": config.SYMBOL,
-            "side": side,
-            "qty": qty,
-            "open_price": price,
-            "close_price": None,
-            "profit": 0,
-            "units": qty,
-            "type": side.upper()
-        })
-        
-        trades_file.write_text(json.dumps(trades, indent=2))
+            risk_amount = config.CAPITAL * config.RISK_PCT
+            stop_distance = max(atr * 1.5, 5)
+            size = int(risk_amount / stop_distance)
+            return max(1, min(size, 10))
+        except:
+            return 1
+    
+    def record_trade(self, trade_info: Dict):
+        if not hasattr(self, 'trade_history'):
+            self.trade_history = []
+        self.trade_history.append(trade_info)
+        if len(self.trade_history) > 100:
+            self.trade_history = self.trade_history[-100:]
+    
+    def get_trade_history(self, limit: int = None) -> List[Dict]:
+        if not hasattr(self, 'trade_history'):
+            self.trade_history = []
+        if limit:
+            return self.trade_history[-limit:]
+        return self.trade_history
+    
+    def disconnect(self):
+        self.connector.disconnect()

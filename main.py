@@ -33,7 +33,7 @@ def run():
 
     lb = LoadBalancer()
     
-    # Gérer l'initialisation de l'executor avec les données différées
+    # Initialiser l'executor
     try:
         ex = OrderExecutor()
         log.info("OrderExecutor initialise avec succes")
@@ -41,7 +41,8 @@ def run():
         log.error(f"Erreur initialisation OrderExecutor: {e}")
         return
     
-    rm = RiskManager()
+    # Initialiser RiskManager avec le capital
+    rm = RiskManager(initial_capital=config.CAPITAL)
 
     cycle = 0
 
@@ -77,7 +78,7 @@ def run():
                 time.sleep(30)
                 continue
                 
-            # Récupérer le prix (avec données différées)
+            # Récupérer le prix
             try:
                 price = ex.get_price()
                 if price <= 0:
@@ -97,7 +98,7 @@ def run():
                 pos = ex.get_position_info()
                 if pos:
                     log.info(f"Position ouverte : {pos['type']} {pos['units']} oz | "
-                             f"Entree: ${pos['open_price']:.2f}")
+                            f"Entree: ${pos['open_price']:.2f}")
             except Exception as e:
                 log.error(f"Erreur get_position_info: {e}")
                 pos = None
@@ -153,10 +154,10 @@ def run():
             elif (signal_ in ("BUY", "SELL")) and has_pos and pos:
                 current_type = pos["type"]
                 if (signal_ == "BUY" and current_type == "SELL") or \
-                   (signal_ == "SELL" and current_type == "BUY"):
+                (signal_ == "SELL" and current_type == "BUY"):
                     log.info("Signal inverse - fermeture + re-entree")
                     try:
-                        ex.close()
+                        ex.close()  
                         time.sleep(2)
                         side = "buy" if signal_ == "BUY" else "sell"
                         ex.enter(side, ex.get_price(), atr)
@@ -166,14 +167,16 @@ def run():
             elif signal_ == "HOLD":
                 log.info("En attente d'un signal...")
 
-            # Historique
+            # Historique - Version sécurisée
             try:
-                history = ex.get_trade_history(count=3)
-                if history:
-                    last = history[0]
-                    log.info(f"Dernier trade clos : {last['type']}")
+                if hasattr(ex, 'get_trade_history'):
+                    history = ex.get_trade_history(limit=3)
+                    if history:
+                        last = history[-1] if history else None
+                        if last:
+                            log.info(f"Dernier trade : {last.get('type', 'N/A')}")
             except Exception as e:
-                log.error(f"Erreur historique: {e}")
+                log.debug(f"Erreur historique (non critique): {e}")
 
             log.info(f"Marge dispo : ${cash:.2f}  |  {rm.status()}")
             time.sleep(LOOP_SECONDS)

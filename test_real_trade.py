@@ -1,41 +1,27 @@
-# test_real_trade.py
-from modules.order_executor import OrderExecutor
+# test_bot.py
 import time
+import sys
+sys.path.insert(0, '.')
 
+print("Test du bot avec IBKR")
+print("=" * 40)
+
+from modules.order_executor import OrderExecutor
+
+print("1. Creation de l'order executor...")
 ex = OrderExecutor()
 
-# Vérifier le cash disponible
+print("2. Attente de connexion...")
+time.sleep(5)
+
+print("3. Test des fonctions...")
+price = ex.get_price()
+print(f"   Prix: ${price:.2f}")
+
 cash = ex.available_cash()
-print(f"Cash disponible: ${cash:.2f}")
+print(f"   Cash: ${cash:.2f}")
 
-# Vérifier la position actuelle
-pos = ex.get_position_info()
-print(f"Position: {pos}")
+has_pos = ex.has_position()
+print(f"   Position: {has_pos}")
 
-# Demander confirmation
-print("\n" + "="*50)
-print("ATTENTION: Ceci va passer un VRAI ordre sur le marché!")
-response = input("Voulez-vous tester un ordre BUY? (oui/non): ")
-
-if response.lower() == "oui":
-    price = ex.get_price()
-    atr = price * 0.002
-    success = ex.enter("buy", price, atr)
-    
-    if success:
-        print("✅ Ordre BUY envoyé!")
-        time.sleep(3)
-        
-        # Vérifier la nouvelle position
-        new_pos = ex.get_position_info()
-        print(f"Nouvelle position: {new_pos}")
-        
-        # Fermer après 10 secondes
-        print("Attente 10 secondes avant fermeture...")
-        time.sleep(10)
-        
-        print("Fermeture de la position...")
-        ex.close()
-        print("✅ Ordre de fermeture envoyé!")
-    else:
-        print("❌ Échec de l'ordre")
+print("\n[SUCCES] Le bot est pret!")

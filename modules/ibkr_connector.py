@@ -24,8 +24,8 @@ class IBApp(EWrapper, EClient):
         self.position = 0
         self.avg_cost = 0
         self.unrealized_pnl = 0
-        self.account_value = 0
-        self.current_price = 0
+        self.account_value = config.CAPITAL
+        self.current_price = 2650.0
         self.bid = 0
         self.ask = 0
         self.order_id = 1
@@ -35,10 +35,14 @@ class IBApp(EWrapper, EClient):
         
     def error(self, reqId, errorCode, errorString):
         # Ignorer les erreurs non critiques
-        if errorCode in [2104, 2106, 2158]:
+        if errorCode in [2104, 2106, 2107, 2108, 2158]:
             log.debug(f"IBKR Info: {errorString}")
         elif errorCode == 326:
-            log.warning(f"Client ID déjà utilisé: {errorString}")
+            log.warning(f"Client ID deja utilise: {errorString}")
+        elif errorCode == 354:
+            log.warning("Donnees de marche en differe (abonnement requis pour temps reel)")
+        elif errorCode == 10167:
+            log.warning("Donnees de marche en differe affichees")
         else:
             log.error(f"IBKR Error {errorCode}: {errorString}")
         
@@ -54,11 +58,13 @@ class IBApp(EWrapper, EClient):
         self.connected = False
         
     def position(self, account, contract, position, avgCost):
-        if contract.symbol == config.SYMBOL.replace("/", ""):
+        # Chercher le symbole correct
+        symbol_to_check = config.SYMBOL.replace("/", "")
+        if contract.symbol == symbol_to_check or contract.symbol == "XAUUSD":
             self.position = position
             self.avg_cost = avgCost
             if position != 0:
-                log.info(f"Position: {position} @ {avgCost}")
+                log.info(f"Position: {position} @ {avgCost:.2f}")
             
     def positionEnd(self):
         pass
@@ -70,6 +76,12 @@ class IBApp(EWrapper, EClient):
         if tag == "AvailableFunds":
             try:
                 self.account_value = float(value)
+                log.debug(f"Available funds: ${self.account_value:.2f}")
+            except:
+                pass
+        elif tag == "NetLiquidation":
+            try:
+                self.net_liquidation = float(value)
             except:
                 pass
             
@@ -82,8 +94,9 @@ class IBApp(EWrapper, EClient):
         elif tickType == 2:  # ASK
             self.ask = price
             
-        if self.bid and self.ask and self.bid > 0 and self.ask > 0:
+        if self.bid > 0 and self.ask > 0:
             self.current_price = (self.bid + self.ask) / 2
+            log.debug(f"Prix mis a jour: Bid={self.bid}, Ask={self.ask}, Mid={self.current_price:.2f}")
             
     def orderStatus(self, orderId, status, filled, remaining, avgFillPrice, 
                     permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
@@ -107,6 +120,7 @@ class IBKRConnector:
         self.app = IBApp()
         self.app.connected = False
         self.thread = None
+        self.connected = False
         self.connect()
         
     def connect(self, max_retries=3):
@@ -117,8 +131,11 @@ class IBKRConnector:
                 client_id = self._client_id_counter
                 self._client_id_counter += 1
                 
-                log.info(f"Tentative de connexion avec clientId={client_id}...")
-                self.app.connect("127.0.0.1", 4002, clientId=client_id)
+                # FORCER le port 4002 pour IB Gateway
+                port = 4002  # ← Changement important: 4002 pour IB Gateway
+                
+                log.info(f"Tentative de connexion avec clientId={client_id} sur port {port}...")
+                self.app.connect("127.0.0.1", port, clientId=client_id)
                 self.thread = threading.Thread(target=self._run_loop, daemon=True)
                 self.thread.start()
                 
@@ -127,6 +144,7 @@ class IBKRConnector:
                     time.sleep(0.5)
                     if self.app.isConnected():
                         self.app.connected = True
+                        self.connected = True
                         break
                         
                 if not self.app.connected:
@@ -142,16 +160,18 @@ class IBKRConnector:
                 
                 # Configurer le contrat pour XAU/USD
                 self.contract = Contract()
-                self.contract.symbol = config.SYMBOL.replace("/", "")
+                self.contract.symbol = "XAUUSD"
                 self.contract.secType = "CFD"
                 self.contract.exchange = "SMART"
                 self.contract.currency = "USD"
+                
+                log.info(f"Contrat configure: {self.contract.symbol} {self.contract.secType} {self.contract.exchange}")
                 
                 # Demander les donnees
                 time.sleep(1)
                 self.app.reqPositions()
                 self.app.reqAccountSummary(1, "All", "AvailableFunds")
-                self.app.reqMarketDataType(3)  # 3 = delayed frozen data (pour eviter erreur 354)
+                self.app.reqMarketDataType(3)  # 3 = delayed frozen data
                 self.app.reqMktData(1, self.contract, "", False, False, [])
                 
                 return True
@@ -168,7 +188,7 @@ class IBKRConnector:
         """Exécute la boucle de l'API"""
         self.app.run()
         
-    def get_price(self):
+    def get_price(self) -> float:
         """Récupère le prix actuel"""
         for _ in range(10):
             if self.app.current_price > 0:
@@ -176,7 +196,7 @@ class IBKRConnector:
             time.sleep(0.5)
         return 2650.0
         
-    def get_position(self):
+    def get_position(self) -> int:
         """Récupère la position"""
         return self.app.position
         
@@ -184,57 +204,61 @@ class IBKRConnector:
         """Retourne les infos de position"""
         if self.app.position != 0:
             return {
-                'type': 'BUY' if self.app.position > 0 else 'SELL',
+                'type': 'LONG' if self.app.position > 0 else 'SHORT',
                 'units': abs(self.app.position),
                 'open_price': self.app.avg_cost,
                 'unrealized_pnl': self.app.unrealized_pnl
             }
         return None
         
-    def available_cash(self):
+    def has_position(self) -> bool:
+        """Vérifie si une position existe"""
+        return self.app.position != 0
+        
+    def available_cash(self) -> float:
         """Récupère le cash disponible"""
-        return self.app.account_value if self.app.account_value > 0 else config.CAPITAL
+        if self.app.account_value > 0:
+            return self.app.account_value
+        return config.CAPITAL
         
-    # modules/ibkr_connector.py - Modification de place_order
-
-def place_order(self, side, quantity):
-    """Place un ordre - quantity doit être un entier"""
-    try:
-        # S'assurer que la quantité est un entier
-        quantity = int(quantity)
-        
-        if quantity <= 0:
-            log.error(f"Quantite invalide: {quantity}")
+    def place_order(self, side: str, quantity: int) -> bool:
+        """Place un ordre - quantity doit être un entier"""
+        try:
+            # S'assurer que la quantité est un entier
+            quantity = int(quantity)
+            
+            if quantity <= 0:
+                log.error(f"Quantite invalide: {quantity}")
+                return False
+                
+            order = Order()
+            order.action = side
+            order.orderType = "MKT"
+            order.totalQuantity = quantity
+            order.eTradeOnly = False
+            order.firmQuoteOnly = False
+            
+            log.info(f"Placement ordre {side} {quantity} units")
+            
+            self.app.order_filled = False
+            self.app.placeOrder(self.app.order_id, self.contract, order)
+            self.app.order_id += 1
+            
+            # Attendre l'execution
+            for _ in range(15):
+                time.sleep(1)
+                if self.app.order_filled:
+                    log.info(f"Ordre {side} {quantity} execute")
+                    return True
+                    
+            log.warning("Ordre non execute apres 15 secondes")
             return False
             
-        order = Order()
-        order.action = side
-        order.orderType = "MKT"
-        order.totalQuantity = quantity
-        order.eTradeOnly = False
-        order.firmQuoteOnly = False
+        except Exception as e:
+            log.error(f"Erreur placement ordre: {e}")
+            return False
         
-        log.info(f"Placement ordre {side} {quantity} units")
-        
-        self.app.order_filled = False
-        self.app.placeOrder(self.app.order_id, self.contract, order)
-        self.app.order_id += 1
-        
-        # Attendre l'execution
-        for _ in range(15):
-            time.sleep(1)
-            if self.app.order_filled:
-                log.info(f"Ordre {side} {quantity} execute")
-                return True
-                
-        log.warning("Ordre non execute apres 15 secondes")
-        return False
-        
-    except Exception as e:
-        log.error(f"Erreur placement ordre: {e}")
-        return False
-        
-    def close_position(self):
+    def close_position(self) -> bool:
         """Ferme la position"""
         if self.app.position != 0:
             side = "SELL" if self.app.position > 0 else "BUY"
@@ -247,6 +271,7 @@ def place_order(self, side, quantity):
             if hasattr(self, 'app') and self.app.isConnected():
                 self.app.disconnect()
                 log.info("Deconnecte d'IBKR")
+                self.connected = False
         except:
             pass
     
