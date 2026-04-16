@@ -1,4 +1,6 @@
 import numpy as np
+import pickle
+import os
 
 
 def relu(x):
@@ -66,6 +68,24 @@ class DQNNetwork:
         clone.set_params(self.get_params())
         return clone
 
+    def save(self, filepath):
+        """Save network weights to file"""
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        params = self.get_params()
+        with open(filepath, 'wb') as f:
+            pickle.dump(params, f)
+        print(f"DQN Network saved to {filepath}")
+
+    def load(self, filepath):
+        """Load network weights from file"""
+        if not os.path.exists(filepath):
+            print(f"Warning: {filepath} not found. Using initialized weights.")
+            return
+        with open(filepath, 'rb') as f:
+            params = pickle.load(f)
+        self.set_params(params)
+        print(f"DQN Network loaded from {filepath}")
+
 
 class PPONetwork:
     """Simple NumPy-based actor-critic network"""
@@ -98,3 +118,39 @@ class PPONetwork:
 
     def predict(self, state):
         return self.forward(state)
+
+    def get_params(self):
+        return {
+            'w1': self.w1.copy(),
+            'b1': self.b1.copy(),
+            'actor_w': self.actor_w.copy(),
+            'actor_b': self.actor_b.copy(),
+            'critic_w': self.critic_w.copy(),
+            'critic_b': self.critic_b.copy()
+        }
+
+    def set_params(self, params):
+        self.w1 = params['w1'].copy()
+        self.b1 = params['b1'].copy()
+        self.actor_w = params['actor_w'].copy()
+        self.actor_b = params['actor_b'].copy()
+        self.critic_w = params['critic_w'].copy()
+        self.critic_b = params['critic_b'].copy()
+
+    def save(self, filepath):
+        """Save network weights to file"""
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        params = self.get_params()
+        with open(filepath, 'wb') as f:
+            pickle.dump(params, f)
+        print(f"PPO Network saved to {filepath}")
+
+    def load(self, filepath):
+        """Load network weights from file"""
+        if not os.path.exists(filepath):
+            print(f"Warning: {filepath} not found. Using initialized weights.")
+            return
+        with open(filepath, 'rb') as f:
+            params = pickle.load(f)
+        self.set_params(params)
+        print(f"PPO Network loaded from {filepath}")

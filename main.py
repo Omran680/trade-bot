@@ -3,9 +3,10 @@ from agent import HybridTradingAgent, DQNAgent, PPOAgent
 from model import softmax
 from feature_extractor import FeatureExtractor, TradingState
 from ensemble_strategies import EnsembleDecisionMaker, EnsembleStrategy
-from config import BATCH_SIZE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, EPIC, SIZE
+from config import BATCH_SIZE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, EPIC, SIZE, CHECKPOINT_INTERVAL
 from trader import Trader
 import time
+import os
 
 
 class XAUUSDHybridTrader:
@@ -35,6 +36,7 @@ class XAUUSDHybridTrader:
 
         self.total_reward = 0
         self.episode_rewards = []
+        self.models_dir = "./models"
 
         # Live trading setup
         self.trader = Trader() if use_live_data else None
@@ -42,6 +44,7 @@ class XAUUSDHybridTrader:
         self.position = None  # Current position info
         self.last_price = None
         self.dry_run = dry_run  # If True, no real trades
+        self.checkpoint_interval = CHECKPOINT_INTERVAL
 
     # =========================
     # LIVE DATA METHODS
@@ -170,6 +173,22 @@ class XAUUSDHybridTrader:
         }
 
     # =========================
+    # MODEL SAVE/LOAD
+    # =========================
+    def save_models(self):
+        """Save DQN and PPO models to disk"""
+        self.agent.save_models(self.models_dir)
+
+    def load_models(self):
+        """Load DQN and PPO models from disk"""
+        if os.path.exists(os.path.join(self.models_dir, "dqn_model.pkl")) or os.path.exists(os.path.join(self.models_dir, "ppo_model.pkl")):
+            self.agent.load_models(self.models_dir)
+            return True
+        else:
+            print(f"No saved models found in {self.models_dir}")
+            return False
+
+    # =========================
     # LIVE TRADING LOOP
     # =========================
     def live_trading_loop(self, max_steps=1000, training_mode=True):
@@ -259,6 +278,12 @@ class XAUUSDHybridTrader:
                 if step % 10 == 0:
                     print(f"Step {step} | Price: {current_price:.2f} | Action: {['BUY', 'SELL', 'HOLD'][action]} | Has Position: {has_position} | Reward: {reward:.4f}")
 
+                # Checkpoint saving
+                if step % (self.checkpoint_interval * 10) == 0 and step > 0:
+                    print(f"\n💾 Checkpoint at step {step}...")
+                    self.save_models()
+                    print()
+
                 # Wait before next iteration
                 time.sleep(2)  # Respect API rate limits
 
@@ -278,6 +303,13 @@ if __name__ == "__main__":
     print("Initializing IG Live Trading Bot...")
     trader = XAUUSDHybridTrader(use_live_data=True, dry_run=True)  # Set dry_run=False for real trading
 
+    # Try to load pre-trained models
+    print("Checking for saved models...")
+    if trader.load_models():
+        print("✓ Loaded pre-trained models. Continuing training...\n")
+    else:
+        print("📌 No saved models found. Starting fresh training...\n")
+
     print("Starting live trading with real XAU/USD data...")
     print("⚠️  DRY RUN MODE: No real trades will be executed")
     print("Change dry_run=False in main.py for real trading")
@@ -285,7 +317,14 @@ if __name__ == "__main__":
 
     try:
         trader.live_trading_loop(max_steps=50, training_mode=True)
+        # Save models after training
+        print("\n💾 Saving final models...")
+        trader.save_models()
     except KeyboardInterrupt:
         print("\nBot stopped by user.")
+        print("💾 Saving models before exit...")
+        trader.save_models()
     except Exception as e:
         print(f"Error during trading: {e}")
+        print("💾 Saving models due to error...")
+        trader.save_models()

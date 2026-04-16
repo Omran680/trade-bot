@@ -1,4 +1,5 @@
 ﻿import numpy as np
+import os
 from model import DQNNetwork, PPONetwork, softmax
 from replay_buffer import ReplayBuffer
 from collections import deque
@@ -86,6 +87,17 @@ class DQNAgent:
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+
+    def save(self, filepath):
+        """Save DQN agent weights"""
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        self.model.save(filepath)
+
+    def load(self, filepath):
+        """Load DQN agent weights"""
+        self.model.load(filepath)
+        # Update target model as well
+        self.target_model.set_params(self.model.get_params())
 
 
 class PPOAgent:
@@ -193,6 +205,15 @@ class PPOAgent:
         self.value_buffer.clear()
         self.logprob_buffer.clear()
 
+    def save(self, filepath):
+        """Save PPO agent weights"""
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        self.model.save(filepath)
+
+    def load(self, filepath):
+        """Load PPO agent weights"""
+        self.model.load(filepath)
+
 
 class HybridTradingAgent:
     """Hybrid PPO+DQN agent"""
@@ -219,3 +240,20 @@ class HybridTradingAgent:
             next_value = self.ppo_agent.get_value(next_state)
             advantages, returns, states = self.ppo_agent.compute_gae(next_value)
             self.ppo_agent.train(advantages, returns, states)
+
+    def save_models(self, models_dir="./models"):
+        '''Save both DQN and PPO models'''
+        os.makedirs(models_dir, exist_ok=True)
+        dqn_path = os.path.join(models_dir, "dqn_model.pkl")
+        ppo_path = os.path.join(models_dir, "ppo_model.pkl")
+        self.dqn_agent.save(dqn_path)
+        self.ppo_agent.save(ppo_path)
+        print(f"✓ Models saved to {models_dir}")
+
+    def load_models(self, models_dir="./models"):
+        '''Load both DQN and PPO models'''
+        dqn_path = os.path.join(models_dir, "dqn_model.pkl")
+        ppo_path = os.path.join(models_dir, "ppo_model.pkl")
+        self.dqn_agent.load(dqn_path)
+        self.ppo_agent.load(ppo_path)
+        print(f"✓ Models loaded from {models_dir}")
