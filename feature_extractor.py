@@ -252,11 +252,9 @@ class TradingState:
             self.max_profit = 0
             self.max_loss = 0
             
-        elif action == 2:  # Close position
-            if self.position != 0:
-                self.position = 0
-                self.entry_price = None
-                self.entry_time = 0
+        elif action == 2:
+            # HOLD: do not change position
+            pass
         
         # Update max profit/loss
         if self.position != 0:

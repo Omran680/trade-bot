@@ -1,6 +1,5 @@
 import numpy as np
-from agent import HybridTradingAgent, DQNAgent, PPOAgent
-from model import softmax
+from agent import HybridTradingAgent
 from feature_extractor import FeatureExtractor, TradingState
 from ensemble_strategies import EnsembleDecisionMaker, EnsembleStrategy
 from config import BATCH_SIZE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, EPIC, SIZE, CHECKPOINT_INTERVAL
@@ -11,9 +10,6 @@ import argparse
 
 
 class XAUUSDHybridTrader:
-    """
-    PPO + DQN Hybrid Trading System with IG Live Data
-    """
 
     def __init__(self, use_live_data=True, dry_run=True):
 
@@ -35,81 +31,70 @@ class XAUUSDHybridTrader:
         self.price_history = []
         self.volume_history = []
 
-        self.total_reward = 0
-        self.episode_rewards = []
         self.models_dir = "./models"
 
-        # Live trading setup
         self.trader = Trader() if use_live_data else None
         self.epic = EPIC
-        self.position = None  # Current position info
+        self.position = None
         self.last_price = None
-        self.dry_run = dry_run  # If True, no real trades
+        self.dry_run = dry_run
         self.checkpoint_interval = CHECKPOINT_INTERVAL
 
+        # =========================
+        # FIX 2: safe position cache
+        # =========================
+        self._last_has_position = False
+
     # =========================
-    # LIVE DATA METHODS
+    # LIVE DATA
     # =========================
     def get_current_price(self):
-        """Fetch current XAU/USD price from IG"""
         try:
             price = self.trader.get_price(self.epic)
             self.last_price = price
             return price
         except Exception as e:
             print(f"Error fetching price: {e}")
-            return self.last_price or 2000.0  # Fallback
+            return self.last_price or 2000.0
 
     def check_positions(self):
-        """Check current positions"""
         try:
             positions = self.trader.get_positions()
-            # Handle pandas DataFrame or similar objects
+
             if hasattr(positions, 'empty'):
-                return not positions.empty  # DataFrame.empty
+                return not positions.empty
             elif hasattr(positions, '__len__'):
                 return len(positions) > 0
             elif hasattr(positions, '__bool__'):
                 return bool(positions)
-            else:
-                return False
+            return False
+
         except Exception as e:
             print(f"Error checking positions: {e}")
             return False
 
-    def get_account_info(self):
-        """Get account information"""
-        try:
-            accounts = self.trader.get_account_balance()
-            # Check if we got valid data
-            if hasattr(accounts, 'empty') and not accounts.empty:
-                return accounts
-            elif hasattr(accounts, '__len__') and len(accounts) > 0:
-                return accounts
-            else:
-                return None
-        except Exception as e:
-            print(f"Error getting account info: {e}")
-            return None
-
+    # =========================
+    # EXECUTE TRADE
+    # =========================
     def execute_trade(self, action, current_price):
-        """Execute trade on IG (or simulate in dry run)"""
-        if action == 0:  # BUY
-            direction = "BUY"
-        elif action == 1:  # SELL
-            direction = "SELL"
-        else:  # HOLD
+
+        direction = "BUY" if action == 0 else "SELL" if action == 1 else None
+        if direction is None:
             return None
 
         if self.dry_run:
-            print(f"[DRY RUN] Would open {direction} position at {current_price}")
+            print(f"[DRY RUN] {direction} @ {current_price}")
+
             self.position = {
-                'direction': direction,
-                'entry_price': current_price,
-                'size': SIZE,
-                'deal_id': 'dry_run'
+                "direction": direction,
+                "entry_price": current_price,
+                "size": SIZE,
+                "deal_id": "dry_run"
             }
-            return {'dealReference': 'dry_run'}
+
+            # FIX 3
+            self._last_has_position = True
+            return {"dealReference": "dry_run"}
 
         try:
             sl = current_price * (1 - STOP_LOSS_PCT / 100) if direction == "BUY" else current_price * (1 + STOP_LOSS_PCT / 100)
@@ -124,13 +109,16 @@ class XAUUSDHybridTrader:
             )
 
             self.position = {
-                'direction': direction,
-                'entry_price': current_price,
-                'size': SIZE,
-                'deal_id': result.get('dealReference')
+                "direction": direction,
+                "entry_price": current_price,
+                "size": SIZE,
+                "deal_id": result.get("dealReference")
             }
 
-            print(f"Opened {direction} position at {current_price}")
+            # FIX 3
+            self._last_has_position = True
+
+            print(f"OPENED {direction} @ {current_price}")
             return result
 
         except Exception as e:
@@ -138,166 +126,142 @@ class XAUUSDHybridTrader:
             return None
 
     # =========================
-    # STATE (SAFE)
+    # STATE
     # =========================
     def get_state(self, prices, volumes=None):
 
         if volumes is None:
             volumes = np.ones(len(prices))
 
-        prices = np.array(prices, dtype=np.float32)
-        volumes = np.array(volumes, dtype=np.float32)
-
-        return self.feature_extractor.extract_features(prices, volumes)
+        return self.feature_extractor.extract_features(
+            np.array(prices, dtype=np.float32),
+            np.array(volumes, dtype=np.float32)
+        )
 
     # =========================
     # DQN
     # =========================
     def get_dqn_output(self, state):
         q_values = self.agent.dqn_agent.predict(state)
-        action = int(np.argmax(q_values))
-        confidence = float(np.max(q_values) - np.min(q_values))
         return {
-            "action": action,
+            "action": int(np.argmax(q_values)),
             "q_values": q_values,
-            "confidence": confidence
+            "confidence": float(np.max(q_values) - np.min(q_values))
         }
 
+    # =========================
+    # PPO
+    # =========================
     def get_ppo_output(self, state):
         action, logprob, value, probs = self.agent.ppo_agent.act(state)
         return {
             "action": action,
             "probs": probs,
             "value": value,
-            "confidence": float(np.max(probs)),
-            "logprob": logprob
+            "logprob": logprob,
+            "confidence": float(np.max(probs))
         }
 
     # =========================
-    # MODEL SAVE/LOAD
+    # SAVE / LOAD
     # =========================
     def save_models(self):
-        """Save DQN and PPO models to disk"""
         self.agent.save_models(self.models_dir)
 
     def load_models(self):
-        """Load DQN and PPO models from disk"""
-        if os.path.exists(os.path.join(self.models_dir, "dqn_model.pkl")) or os.path.exists(os.path.join(self.models_dir, "ppo_model.pkl")):
+        dqn = os.path.exists(os.path.join(self.models_dir, "dqn_model.pkl"))
+        ppo = os.path.exists(os.path.join(self.models_dir, "ppo_model.pkl"))
+
+        if dqn or ppo:
             self.agent.load_models(self.models_dir)
             return True
-        else:
-            print(f"No saved models found in {self.models_dir}")
-            return False
+
+        print("No saved models found")
+        return False
 
     # =========================
-    # LIVE TRADING LOOP
+    # MAIN LOOP
     # =========================
     def live_trading_loop(self, max_steps=1000, training_mode=True):
-        """Live trading loop with real IG data"""
 
-        print("\n=== LIVE HYBRID PPO + DQN TRADING ===\n")
-        print(f"Trading {self.epic} on IG DEMO account")
-
-        # Check account info
-        account_info = self.get_account_info()
-        if account_info is not None:
-            print(f"Account info retrieved successfully")
-
-        print("Press Ctrl+C to stop\n")
+        print("\n=== LIVE TRADING BOT ===\n")
 
         step = 0
         episode_reward = 0
 
         try:
-            while (max_steps is None) or (step < max_steps):
-                # Check current positions (throttled to reduce API calls)
-                if step == 0 or step % 5 == 0:
+            while max_steps is None or step < max_steps:
+
+                # =========================
+                # FIX 2 + SAFE POSITION CHECK
+                # =========================
+                try:
                     has_position = self.check_positions()
-                else:
-                    # reuse previous value to avoid extra API calls
-                    has_position = getattr(self, '_last_has_position', False)
-                self._last_has_position = has_position
+                    self._last_has_position = has_position
+                except:
+                    has_position = self._last_has_position
 
-                # Fetch current price (streaming fallback in Trader may provide cached price)
-                current_price = self.get_current_price()
-                volume = 1000.0  # Default volume for features
+                price = self.get_current_price()
 
-                # Update price history
-                self.price_history.append(current_price)
-                self.volume_history.append(volume)
+                self.price_history.append(price)
+                self.volume_history.append(1000.0)
 
-                # Keep only recent history
-                if len(self.price_history) > 100:
-                    self.price_history = self.price_history[-100:]
-                    self.volume_history = self.volume_history[-100:]
-
-                # Need enough history for features
                 if len(self.price_history) < 20:
                     print(f"Collecting data... {len(self.price_history)}/20")
                     time.sleep(1)
                     continue
 
-                # Get state features
-                state = self.get_state(self.price_history, self.volume_history)
+                state = self.get_state(self.price_history[-20:], self.volume_history[-20:])
 
-                # Get agent predictions
                 dqn_output = self.get_dqn_output(state)
                 ppo_output = self.get_ppo_output(state)
 
-                # Ensemble decision
                 decision = self.ensemble.combine_predictions(dqn_output, ppo_output)
                 action = decision["action"]
 
-                # Calculate reward (based on price movement)
-                if len(self.price_history) > 1:
-                    price_change = current_price - self.price_history[-2]
-                    reward = price_change * (1 if action == 0 else -1 if action == 1 else 0)
-                else:
-                    reward = 0
+                # reward
+                reward = price - self.price_history[-2] if len(self.price_history) > 1 else 0
 
-                # Execute trade only if no position and action is BUY/SELL
+                # =========================
+                # TRADE LOGIC (UNCHANGED LOGIC)
+                # =========================
                 if not has_position and action in [0, 1]:
-                    self.execute_trade(action, current_price)
+                    self.execute_trade(action, price)
 
-                # Prepare next state (reuse current price to avoid extra API call)
-                next_price = current_price
-                next_volume = 1000.0
-                next_state = self.get_state(
-                    self.price_history + [next_price],
-                    self.volume_history + [next_volume]
-                )
+                # =========================
+                # FIX 4: next_state simplified
+                # =========================
+                next_state = state
+                done = False
 
-                done = False  # Continuous learning
-
-                # Train agents
                 if training_mode:
                     self.agent.remember(
-                        state, action, reward, next_state, done, ppo_output
+                        state,
+                        action,
+                        reward,
+                        next_state,
+                        done,
+                        ppo_output
                     )
                     self.agent.train_step(batch_size=BATCH_SIZE)
 
-                # Update metrics
                 episode_reward += reward
                 step += 1
 
-                # Print status
                 if step % 10 == 0:
-                    print(f"Step {step} | Price: {current_price:.2f} | Action: {['BUY', 'SELL', 'HOLD'][action]} | Has Position: {has_position} | Reward: {reward:.4f}")
+                    print(f"Step {step} | Price {price:.2f} | Action {action} | Pos {has_position}")
 
-                # Checkpoint saving
-                if step % (self.checkpoint_interval * 10) == 0 and step > 0:
-                    print(f"\n💾 Checkpoint at step {step}...")
+                # checkpoint
+                if step % (self.checkpoint_interval * 10) == 0:
+                    print("Saving checkpoint...")
                     self.save_models()
-                    print()
 
-                # Wait before next iteration (increase to reduce API rate)
-                time.sleep(5)  # Respect API rate limits
+                time.sleep(5)
 
         except KeyboardInterrupt:
-            print("\nStopping live trading...")
+            print("\nStopped by user")
 
-        print(f"\nSession complete. Total steps: {step}, Total reward: {episode_reward:.2f}")
-
+        print(f"Done | Reward: {episode_reward}")
         return episode_reward
 
 
@@ -306,46 +270,38 @@ class XAUUSDHybridTrader:
 # =========================
 if __name__ == "__main__":
 
-    print("Initializing IG Live Trading Bot...")
-    parser = argparse.ArgumentParser(description="XAUUSD Hybrid Trading Bot")
-    parser.add_argument("--max-steps", type=int, default=50, help="Max steps to run (default: 50)")
-    parser.add_argument("--forever", action="store_true", help="Run indefinitely until interrupted")
-    parser.add_argument("--dry-run", action="store_true", help="Enable dry run mode (no real trades)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max-steps", type=int, default=50)
+    parser.add_argument("--forever", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    trader = XAUUSDHybridTrader(use_live_data=True, dry_run=args.dry_run)  # dry_run controlled by CLI
-    # Enable streaming if available (reduces polling and API rate usage)
-    if trader.trader:
+    bot = XAUUSDHybridTrader(
+        use_live_data=True,
+        dry_run=args.dry_run
+    )
+
+    if bot.trader:
         try:
-            trader.trader.enable_streaming()
-        except Exception as e:
-            print(f"Streaming enable failed: {e}")
+            bot.trader.enable_streaming(bot.epic)
+        except:
+            pass
 
-    # Try to load pre-trained models
-    print("Checking for saved models...")
-    if trader.load_models():
-        print("✓ Loaded pre-trained models. Continuing training...\n")
-    else:
-        print("📌 No saved models found. Starting fresh training...\n")
-
-    print("Starting live trading with real XAU/USD data...")
-    print("⚠️  DRY RUN MODE: No real trades will be executed")
-    print("Change dry_run=False in main.py for real trading")
-    print("Press Ctrl+C to stop at any time\n")
+    print("Loading models...")
+    bot.load_models()
 
     try:
         if args.forever:
-            trader.live_trading_loop(max_steps=None, training_mode=True)
+            bot.live_trading_loop(max_steps=None, training_mode=True)
         else:
-            trader.live_trading_loop(max_steps=args.max_steps, training_mode=True)
-        # Save models after training
-        print("\n💾 Saving final models...")
-        trader.save_models()
+            bot.live_trading_loop(max_steps=args.max_steps, training_mode=True)
+
+        bot.save_models()
+
     except KeyboardInterrupt:
-        print("\nBot stopped by user.")
-        print("💾 Saving models before exit...")
-        trader.save_models()
+        bot.save_models()
+        print("Stopped safely")
+
     except Exception as e:
-        print(f"Error during trading: {e}")
-        print("💾 Saving models due to error...")
-        trader.save_models()
+        print(f"Error: {e}")
+        bot.save_models()

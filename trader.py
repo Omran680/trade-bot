@@ -20,7 +20,7 @@ class Trader:
         self._last_price = None
         self._use_stream = False
 
-    def enable_streaming(self):
+    def enable_streaming(self, epic=None):
         """Enable market streaming if available in trading_ig.
 
         This sets a flag and starts a background listener when possible.
@@ -39,11 +39,18 @@ class Trader:
             # Create and start streaming client
             self._stream = StreamingClient(USERNAME, PASSWORD, API_KEY, acc_type='DEMO')
             self._stream.connect()
-            # subscribe to epic updates; method name may vary in trading_ig versions
+            # subscribe to epic updates if provided; method name may vary in trading_ig versions
             try:
-                self._stream.subscribe_epic(EPIC)
+                if epic is not None:
+                    # method name may differ between versions; try common variants
+                    try:
+                        self._stream.subscribe_epic(epic)
+                    except Exception:
+                        try:
+                            self._stream.subscribe(epic)
+                        except Exception:
+                            pass
             except Exception:
-                # fallback: generic subscription
                 pass
 
             # Hook handler if available

@@ -197,7 +197,7 @@ Tous les 64 steps:
      - Total loss = policy_loss + 0.5*value_loss - 0.01*entropy
   4. Backprop et update
 ```
-
+  
 ### Phase 4: Adaptation Poids
 ```
 À chaque episode:

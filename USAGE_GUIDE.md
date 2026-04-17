@@ -9,7 +9,9 @@ python -m venv venv
 source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 ```
-
+# python main.py --max-steps 500  
+# python main.py --forever 
+# python main.py --forever --dry-run
 ### 2. Installer les dépendances
 ```bash
 pip install -r requirements.txt
