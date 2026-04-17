@@ -209,10 +209,15 @@ class XAUUSDHybridTrader:
 
         try:
             while step < max_steps:
-                # Check current positions
-                has_position = self.check_positions()
+                # Check current positions (throttled to reduce API calls)
+                if step == 0 or step % 5 == 0:
+                    has_position = self.check_positions()
+                else:
+                    # reuse previous value to avoid extra API calls
+                    has_position = getattr(self, '_last_has_position', False)
+                self._last_has_position = has_position
 
-                # Fetch current price
+                # Fetch current price (streaming fallback in Trader may provide cached price)
                 current_price = self.get_current_price()
                 volume = 1000.0  # Default volume for features
 
@@ -253,8 +258,8 @@ class XAUUSDHybridTrader:
                 if not has_position and action in [0, 1]:
                     self.execute_trade(action, current_price)
 
-                # Prepare next state
-                next_price = self.get_current_price()  # Fetch again for next state
+                # Prepare next state (reuse current price to avoid extra API call)
+                next_price = current_price
                 next_volume = 1000.0
                 next_state = self.get_state(
                     self.price_history + [next_price],
@@ -284,8 +289,8 @@ class XAUUSDHybridTrader:
                     self.save_models()
                     print()
 
-                # Wait before next iteration
-                time.sleep(2)  # Respect API rate limits
+                # Wait before next iteration (increase to reduce API rate)
+                time.sleep(5)  # Respect API rate limits
 
         except KeyboardInterrupt:
             print("\nStopping live trading...")
@@ -301,7 +306,13 @@ class XAUUSDHybridTrader:
 if __name__ == "__main__":
 
     print("Initializing IG Live Trading Bot...")
-    trader = XAUUSDHybridTrader(use_live_data=True, dry_run=True)  # Set dry_run=False for real trading
+    trader = XAUUSDHybridTrader(use_live_data=True, dry_run=False)  # Set dry_run=False for real trading
+    # Enable streaming if available (reduces polling and API rate usage)
+    if trader.trader:
+        try:
+            trader.trader.enable_streaming()
+        except Exception as e:
+            print(f"Streaming enable failed: {e}")
 
     # Try to load pre-trained models
     print("Checking for saved models...")

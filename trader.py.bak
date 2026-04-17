@@ -1,3 +1,6 @@
+# Backup of trader.py before streaming changes
+# DO NOT EDIT - used for rollback if 'annule' requested
+
 from trading_ig import IGService
 import os
 import time
@@ -15,58 +18,12 @@ class Trader:
     def __init__(self):
         self.ig = IGService(USERNAME, PASSWORD, API_KEY, acc_type="DEMO")
         self.ig.create_session()
-        # Streaming attributes
-        self._stream = None
-        self._last_price = None
-        self._use_stream = False
-
-    def enable_streaming(self):
-        """Enable market streaming if available in trading_ig.
-
-        This sets a flag and starts a background listener when possible.
-        """
-        try:
-            # Lazy import of streaming client (optional dependency)
-            from trading_ig import StreamingClient
-
-            def _on_price(data):
-                try:
-                    if data and 'snapshot' in data and 'bid' in data['snapshot']:
-                        self._last_price = float(data['snapshot']['bid'])
-                except Exception:
-                    pass
-
-            # Create and start streaming client
-            self._stream = StreamingClient(USERNAME, PASSWORD, API_KEY, acc_type='DEMO')
-            self._stream.connect()
-            # subscribe to epic updates; method name may vary in trading_ig versions
-            try:
-                self._stream.subscribe_epic(EPIC)
-            except Exception:
-                # fallback: generic subscription
-                pass
-
-            # Hook handler if available
-            try:
-                self._stream.on_price = _on_price
-            except Exception:
-                pass
-
-            self._use_stream = True
-            print('Streaming enabled')
-        except Exception as e:
-            print(f'Streaming not available: {e}')
-            self._use_stream = False
 
     def get_price(self, epic):
         """Fetch current price with retries and detailed error logging.
 
         Returns last known bid as float or raises after retries.
         """
-        # If streaming is enabled and has a recent price, use it
-        if self._use_stream and self._last_price is not None:
-            return self._last_price
-
         last_exc = None
         for attempt in range(1, 4):
             try:
@@ -74,18 +31,13 @@ class Trader:
                 # Defensive: ensure snapshot and bid exist
                 if not data or "snapshot" not in data or "bid" not in data["snapshot"]:
                     raise ValueError(f"Invalid market data structure: {data}")
-                price = float(data["snapshot"]["bid"])
-                self._last_price = price
-                return price
+                return float(data["snapshot"]["bid"])
             except Exception as e:
                 last_exc = e
                 print(f"Error fetching price (attempt {attempt}/3): {repr(e)}")
                 traceback.print_exc()
-                # If rate limit, backoff longer
-                if e.__class__.__name__ == 'ApiExceededException':
-                    time.sleep(10 * attempt)
-                else:
-                    time.sleep(1 * attempt)
+                # Wait before retrying
+                time.sleep(1 * attempt)
 
         # After retries, re-raise the last exception so caller can handle it
         raise last_exc
