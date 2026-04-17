@@ -7,6 +7,7 @@ from config import BATCH_SIZE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, EPIC, SIZE, CHECK
 from trader import Trader
 import time
 import os
+import argparse
 
 
 class XAUUSDHybridTrader:
@@ -208,7 +209,7 @@ class XAUUSDHybridTrader:
         episode_reward = 0
 
         try:
-            while step < max_steps:
+            while (max_steps is None) or (step < max_steps):
                 # Check current positions (throttled to reduce API calls)
                 if step == 0 or step % 5 == 0:
                     has_position = self.check_positions()
@@ -306,7 +307,13 @@ class XAUUSDHybridTrader:
 if __name__ == "__main__":
 
     print("Initializing IG Live Trading Bot...")
-    trader = XAUUSDHybridTrader(use_live_data=True, dry_run=False)  # Set dry_run=False for real trading
+    parser = argparse.ArgumentParser(description="XAUUSD Hybrid Trading Bot")
+    parser.add_argument("--max-steps", type=int, default=50, help="Max steps to run (default: 50)")
+    parser.add_argument("--forever", action="store_true", help="Run indefinitely until interrupted")
+    parser.add_argument("--dry-run", action="store_true", help="Enable dry run mode (no real trades)")
+    args = parser.parse_args()
+
+    trader = XAUUSDHybridTrader(use_live_data=True, dry_run=args.dry_run)  # dry_run controlled by CLI
     # Enable streaming if available (reduces polling and API rate usage)
     if trader.trader:
         try:
@@ -327,7 +334,10 @@ if __name__ == "__main__":
     print("Press Ctrl+C to stop at any time\n")
 
     try:
-        trader.live_trading_loop(max_steps=50, training_mode=True)
+        if args.forever:
+            trader.live_trading_loop(max_steps=None, training_mode=True)
+        else:
+            trader.live_trading_loop(max_steps=args.max_steps, training_mode=True)
         # Save models after training
         print("\n💾 Saving final models...")
         trader.save_models()

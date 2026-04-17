@@ -320,5 +320,5 @@ trader.load_models()
 ---
 
 **Auteur**: Hybrid Trading System
-**Date**: 2024
+**Date**: 17-04-2026
 **Version**: 1.0

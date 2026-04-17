@@ -214,7 +214,7 @@ session = TradingSession(capital=10000)
 
 result = session.open_position(
     entry_price=2050,
-    stop_loss_price=2045,
+    stop_loss_price=2045, 
     take_profit_price=2060,
     direction='LONG'
 )
