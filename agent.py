@@ -9,7 +9,7 @@ class DQNAgent:
     """NumPy-based DQN agent"""
     def __init__(self, state_size=10, action_size=3, lr=0.001, gamma=0.95):
         self.state_size = state_size
-        self.action_size = action_size
+        self.action_size = action_size  
         self.gamma = gamma
         self.lr = lr
         self.epsilon = 1.0

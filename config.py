@@ -1,8 +1,8 @@
 # ============= TRADING CONFIG =============
 EPIC = "CS.D.IN_GOLD.MFI.IP"  # IG Markets Gold (XAU/USD)
 SIZE = 0.1  # Standard lot size
-STOP_LOSS_PCT = 2.0  # 2% stop loss
-TAKE_PROFIT_PCT = 3.0  # 3% take profit
+STOP_LOSS_PCT = 0.3  # 2% stop loss
+TAKE_PROFIT_PCT = 0.5  # 3% take profit
 
 # ============= AGENT CONFIG =============
 STATE_SIZE = 18  # Feature vector size (from FeatureExtractor)
@@ -16,7 +16,7 @@ LR = 0.0003  # Learning rate
 # ============= DQN CONFIG =============
 EPSILON_START = 1.0
 EPSILON_END = 0.05
-EPSILON_DECAY = 0.995
+EPSILON_DECAY = 0.999
 TARGET_UPDATE_FREQ = 1000  # Update target network every N steps
 
 # ============= PPO CONFIG =============
@@ -27,12 +27,12 @@ GAE_LAMBDA = 0.95  # Generalized Advantage Estimation lambda
 
 # ============= EXPERIENCE REPLAY =============
 BATCH_SIZE = 32
-MEMORY_SIZE = 5000
+MEMORY_SIZE = 50000
 REPLAY_START_SIZE = 100  # Start training after N experiences
 
 # ============= ENSEMBLE CONFIG =============
-DQN_WEIGHT = 0.5  # Initial DQN weight in ensemble
-PPO_WEIGHT = 0.5  # Initial PPO weight in ensemble
+DQN_WEIGHT = 0.7  # Initial DQN weight in ensemble
+PPO_WEIGHT = 0.3  # Initial PPO weight in ensemble
 ENSEMBLE_STRATEGY = "weighted_voting"  # Options: voting, weighted_voting, averaging, stacking
 
 # ============= FEATURE EXTRACTION =============
