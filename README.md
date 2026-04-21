@@ -389,8 +389,7 @@ Pour questions/issues:
 
 **Version**: 1.0  
 **Status**: Production-Ready  
-**Last Updated**: 2024  
-**Python**: 3.8+  
-**Dependencies**: TensorFlow 2.10+, NumPy, Pandas
+**Last Updated**: 2026 
+**Python**: 3.14.3
 
 **Happy Trading! 🚀📈**
