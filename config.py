@@ -1,8 +1,8 @@
 # ============= TRADING CONFIG =============
 EPIC = "CS.D.IN_GOLD.MFI.IP"  # IG Markets Gold (XAU/USD)
 SIZE = 0.1  # Standard lot size
-STOP_LOSS_PCT = 0.3  # 2% stop loss
-TAKE_PROFIT_PCT = 0.5  # 3% take profit
+STOP_LOSS_PCT = 0.2  #  stop loss
+TAKE_PROFIT_PCT = 0.3  # take profit
 
 # ============= AGENT CONFIG =============
 STATE_SIZE = 18  # Feature vector size (from FeatureExtractor)
@@ -27,16 +27,16 @@ GAE_LAMBDA = 0.95  # Generalized Advantage Estimation lambda
 
 # ============= EXPERIENCE REPLAY =============
 BATCH_SIZE = 32
-MEMORY_SIZE = 50000
+MEMORY_SIZE = 200000
 REPLAY_START_SIZE = 100  # Start training after N experiences
 
 # ============= ENSEMBLE CONFIG =============
-DQN_WEIGHT = 0.7  # Initial DQN weight in ensemble
-PPO_WEIGHT = 0.3  # Initial PPO weight in ensemble
+DQN_WEIGHT = 0.55  # Initial DQN weight in ensemble
+PPO_WEIGHT = 0.45  # Initial PPO weight in ensemble
 ENSEMBLE_STRATEGY = "weighted_voting"  # Options: voting, weighted_voting, averaging, stacking
 
 # ============= FEATURE EXTRACTION =============
-LOOKBACK_WINDOW = 20  # Historical window for feature extraction
+LOOKBACK_WINDOW = 50  # Historical window for feature extraction
 FEATURE_NORMALIZATION = "minmax"  # Options: minmax, zscore
 
 # ============= TRAINING CONFIG =============
@@ -51,4 +51,4 @@ EVAL_EPISODES = 5
 # ============= LOGGING =============
 LOG_DIR = "./logs"
 MODELS_DIR = "./models"
-CHECKPOINT_INTERVAL = 50  # Save checkpoint every N episodes
+CHECKPOINT_INTERVAL = 50  # Save checkpoint every N episodes            

@@ -7,8 +7,8 @@
 #### Core Architecture
 - [x] DQN Agent with experience replay
 - [x] PPO Agent with Actor-Critic
-- [x] Hybrid Network with shared features
-- [x] Feature Extractor (18 indicators)
+   - [x] Hybrid Network with shared features
+   - [x] Feature Extractor (18 indicators)
 - [x] Trading State Management
 - [x] Ensemble Decision Maker
 
@@ -465,6 +465,6 @@ test: Add unit tests for DQN
 
 ---
 
-**Last Updated**: 2024  
+**Last Updated**: 2026
 **Maintainer**: Hybrid Trading System  
 **Status**: Active Development

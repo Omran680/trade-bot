@@ -378,7 +378,7 @@ Vous avez un **système de trading hybride complet et production-ready**.
 **Bienvenue dans Hybrid PPO+DQN Trading! 🚀📈**
 
 Version: 1.0  
-Last Updated: 2024  
+Last Updated: 2026 
 Status: ✅ Complete  
 
 Happy Trading! 🎉

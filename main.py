@@ -14,7 +14,7 @@ class XAUUSDHybridTrader:
     def __init__(self, use_live_data=True, dry_run=True):
 
         self.state_size = 18
-        self.action_size = 3  # BUY, SELL, HOLD
+        self.action_size = 3  # BUY,    SELL, HOLD
 
         self.agent = HybridTradingAgent(
             state_size=self.state_size,
@@ -304,4 +304,4 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Error: {e}")
-        bot.save_models()
+        bot.save_models()   
