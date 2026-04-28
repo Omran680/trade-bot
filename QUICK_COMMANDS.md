@@ -563,9 +563,9 @@ for strat in strategies:
     trader.trading_loop(prices, volumes, episodes=10)
     print(f'{strat.value}: {np.mean(trader.episode_rewards):.2f}')
 "
-```
+```z
 
----
+
 
 **🎯 Quick Reference Guide**
 **Last Updated**: 2026

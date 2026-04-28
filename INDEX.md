@@ -146,7 +146,7 @@ X-DQN-Engine/
 Installation → Quick Start → Architecture → FAQ → Support
 ```
 
-### Dans ARCHITECTURE.md
+###   ARCHITECTURE.md
 ```
 Overview → Components → Algorithms → Ensemble → Features → Cycle → Config
 ```
